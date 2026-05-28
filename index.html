@@ -41,7 +41,7 @@
 <p><img src="fog_heavy.png" alt="Cornell with heavy fog"></p>
 <p>Heavy fog. sigma_a = (0.25, 0.35, 0.50), sigma_s = 0.</p>
 
-<p>The warm color cast in the fogged renders is the expected behavior. Blue is absorbed more than red because sigma_a_b &gt; sigma_a_r, so what reaches the camera is biased toward warm wavelengths. Depth-dependent attenuation is visible: the back wall and the sphere are noticeably dimmer than surfaces close to the camera, and the soft floor shadow under the sphere takes on a warm tint because that bounce light travels farther through the medium before reaching the camera.</p>
+<p>The warm color cast in the fogged renders is the expected behavior. Blue is absorbed most and red least (sigma_a_b > sigma_a_g > sigma_a_r), so what reaches the camera is biased toward warm wavelengths. Depth-dependent attenuation is visible: the back wall and the sphere are noticeably dimmer than surfaces close to the camera, and the soft floor shadow under the sphere takes on a warm tint because that bounce light travels farther through the medium before reaching the camera.</p>
 <p>This is absorption only. No scattering events, no in-scattering, no phase function. With sigma_s = 0 the renderer is physically correct (no missing in-scattering term to compensate for).</p>
 
 <h2>Next Steps</h2>
