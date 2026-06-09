@@ -8,6 +8,10 @@
 <h1>CSE 168 Final Project: Volumetric Path Tracing</h1>
 <p>Christos Enotiadis · Spring 2026</p>
 
+<h2>Hero Image</h2>
+<p><img src="hero_4096.png" alt="Light shafts through a window into a foggy room" width="800"></p>
+<p>Light shafts through a window into a foggy room. 800x800, 4096spp, homogeneous scattering medium with sigma_a = 0.02, sigma_s = 0.075, g = 0.45. Full scene description further down.</p>
+
 <h2>Project Proposal</h2>
 <p>Extending my HW1-4 path tracer with participating media. Hero image target is a scene with visible light shafts through fog or haze, e.g. a window beaming into a dusty interior.</p>
 <ol>
@@ -44,9 +48,37 @@
 <p>The warm color cast in the fogged renders is the expected behavior. Blue is absorbed most and red least (sigma_a_b > sigma_a_g > sigma_a_r), so what reaches the camera is biased toward warm wavelengths. Depth-dependent attenuation is visible: the back wall and the sphere are noticeably dimmer than surfaces close to the camera, and the soft floor shadow under the sphere takes on a warm tint because that bounce light travels farther through the medium before reaching the camera.</p>
 <p>This is absorption only. No scattering events, no in-scattering, no phase function. With sigma_s = 0 the renderer is physically correct (no missing in-scattering term to compensate for).</p>
 
-<h2>Next Steps</h2>
-<p>Add free-flight sampling at each bounce: sample t = -log(1-xi) / sigma_t before each traceScene call. If t &lt; hit.t the next vertex is a medium scattering event instead of a surface hit. At the scattering vertex, sample a new direction with the Henyey-Greenstein phase function using its closed-form inverse CDF on cosTheta. Extend the surface MIS in shadeMIS to medium vertices. The BSDF role gets replaced by the HG phase function, and shadow ray contributions are multiplied by transmittance through the medium. Then compose the hero scene with a strong window source illuminating a foggy interior, where the new in-scattering term should produce visible light shafts.</p>
-<p>Stretch stays the same: delta tracking for heterogeneous media on a procedural noise grid, ratio tracking for unbiased transmittance on shadow rays. Only if the homogeneous path lands cleanly and there is time.</p>
+<h2>Final Results</h2>
+<p>Full volumetric path tracing is in: homogeneous scattering media with free flight sampling, the Henyey-Greenstein phase function with importance sampling, and MIS between phase function sampling and NEE at scattering vertices. The absorption only path from the milestone is kept as a fallback when sigma_s = 0, so all earlier scenes render identically.</p>
+<p>What was added since the milestone:</p>
+<ol>
+<li>Free flight sampling in pathTrace. Each bounce samples t = -log(1-xi) / sigma_t_s before the surface intersection is used, where sigma_t_s is the mean of the rgb sigma_t channels. If t &lt; hit.t the next vertex is a scattering event in the medium instead of the surface hit.</li>
+<li>Scatter vertex throughput. Sampling with a scalar sigma_t_s but attenuating with the rgb sigma_t means the weight at a scatter vertex is (sigma_s / sigma_t_s) * exp((sigma_t_s - sigma_t) * t). When the ray reaches the surface without scattering the weight is exp((sigma_t_s - sigma_t) * t). Both are exact, the estimator stays unbiased for colored media.</li>
+<li>hgPhase(cosTheta, g) and sampleHG(). Closed form HG evaluation and inverse CDF sampling on cosTheta, with the isotropic special case at g near 0. The HG value doubles as the solid angle pdf since the sampling is exact.</li>
+<li>shadeMISVolume(). Direct lighting at a scattering vertex with the same multi sample power heuristic structure as the surface shadeMIS, except the phase function replaces the BRDF and there is no surface cosine. NEE shadow rays pick up transmittance over their length. The phase side contribution simplifies to w * Li * transmittance since p_HG / pdf = 1.</li>
+<li>HG continuation. After the direct estimator the path continues in a direction sampled from HG. The pdf cancels exactly against the phase function so the throughput only carries the scatter vertex weight from item 2.</li>
+<li>Parser token g for the asymmetry parameter.</li>
+</ol>
+
+<p>The two cornell renders below show in-scattering working, same box as the milestone images but with sigma_a = 0.05 and sigma_s = (0.30, 0.40, 0.50). The visible glow extending below the light is light scattered toward the camera in mid air, which the milestone absorption renders could not produce.</p>
+
+<p><img src="cornellScatterIso.png" alt="Cornell with isotropic scattering"></p>
+<p>Isotropic scattering, g = 0.</p>
+
+<p><img src="cornellScatter.png" alt="Cornell with forward scattering"></p>
+<p>Forward scattering, g = 0.5. The glow under the light is brighter and more directional than the isotropic case because forward scattering keeps redirected light moving roughly along its original direction, down and toward the camera.</p>
+
+<h2>Hero Scene</h2>
+<p>The hero is a dark room with a four pane window in one wall and a small, very bright quad light far outside (about 25 units away, intensity in the thousands). The distance matters: shaft definition comes from the angular size of the source, a big close light gives every shadow edge a huge penumbra and the beam turns to mush. Small and far away with intensity scaled up by distance squared keeps the mullion shadows crisp inside the beam. The medium is sigma_a = 0.02, sigma_s = 0.075, g = 0.45, picked so the mean free path is on the order of the room size and the beam stays visible from a side-on camera (high g values dim the beam at large scatter angles). A GGX sphere sits in the beam landing zone. The geometry is emitted by a small python script (scenes/gen_hero.py) that takes room, window, light, and camera parameters, mostly so iterating on the composition was editing three numbers instead of rederiving vertex coordinates.</p>
+<p>The long streak behind the sphere is its shadow through the fog, which I think is the best volumetric detail in the image: the fog behind the sphere receives no direct light so there is no in-scattering there, and the darkness is visible in mid air.</p>
+
+<h2>Noise</h2>
+<p>Volumetric scenes with small bright lights are firefly territory. Rare paths scatter in the fog and then connect to the light with a tiny pdf, dumping a lot of energy into one sample. These outliers converge much slower than regular variance, going from 1024spp to 4096spp visibly reduced the speckle but did not eliminate it.</p>
+<p><img src="hero_1024.png" alt="Hero at 1024spp" width="400"></p>
+<p>1024spp for comparison. The remaining speckle in the final 4096spp render could be removed with per sample radiance clamping, which is standard practice in production renderers, but it introduces bias and I preferred keeping the estimator unbiased and letting the grain read as film grain.</p>
+
+<h2>Stretch Goal</h2>
+<p>Heterogeneous media (delta tracking, ratio tracking) did not happen, as scoped in the proposal it was conditional on the homogeneous path landing early. The time went into the MIS correctness and the hero scene instead.</p>
 
 </body>
 </html>
